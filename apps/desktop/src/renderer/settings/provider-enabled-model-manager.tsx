@@ -1,4 +1,5 @@
 import { MultiSelector } from '@astryxdesign/core';
+import type { MultiSelectorOptionType } from '@astryxdesign/core/MultiSelector';
 import type { ModelCatalogEntry } from '@maka/core/model-catalog';
 import { useUiLocale } from '@maka/ui';
 import { getProviderSettingsCopy } from '../locales/settings-provider-copy';
@@ -12,7 +13,15 @@ import { getProviderSettingsCopy } from '../locales/settings-provider-copy';
  * on it combined. MultiSelector keeps the same one-line field weight as the
  * selectors around it, and brings the search that a list that long needs.
  *
- * `enabledModelIds` remains the only product state.
+ * `enabledModelIds` remains the only product state. Models the user declared by
+ * hand sit in their own titled section rather than being spelled into a label:
+ * the selector groups them, so "which of these did the provider advertise" is
+ * answered by structure and stays true when the label is truncated.
+ *
+ * Adding is a separate act with its own dialog — see provider-add-model-dialog.
+ * Its button lives beside 测试连接 in the section's action row, not under this
+ * field: all three act on the section, and stacking them read as two unrelated
+ * button rows.
  */
 export function EnabledModelManager(props: {
   modelChoices: ModelCatalogEntry[];
@@ -21,27 +30,33 @@ export function EnabledModelManager(props: {
   onChange(ids: string[]): void;
 }) {
   const copy = getProviderSettingsCopy(useUiLocale()).detail;
-  const options = (() => {
-    const byId = new Map(props.modelChoices.map((model) => [model.id, model] as const));
+  const byId = new Map(props.modelChoices.map((model) => [model.id, model] as const));
+
+  const { options, count } = (() => {
     const seen = new Set<string>();
-    const list: Array<{ value: string; label: string; disabled?: boolean }> = [];
-    const push = (id: string, label: string) => {
-      seen.add(id);
-      list.push({ value: id, label });
-    };
+    const catalogued: Array<{ value: string; label: string }> = [];
+    const manual: Array<{ value: string; label: string }> = [];
     for (const model of props.modelChoices) {
       if (!model.canUseAsChatDefault) continue;
-      push(model.id, modelDisplayLabel(model));
+      seen.add(model.id);
+      catalogued.push({ value: model.id, label: modelDisplayLabel(model) });
     }
     // Always surface an already-enabled model even if it is not a current
-    // chat-default candidate (a stale id, or a model dropped from the latest
-    // catalog), so the user can still toggle it off.
+    // chat-default candidate (a stale id, a model dropped from the latest
+    // catalog, or an ID the user entered by hand), so the user can still
+    // toggle it off.
     for (const id of props.enabledModelIds) {
       if (seen.has(id)) continue;
+      seen.add(id);
       const model = byId.get(id);
-      push(id, model ? modelDisplayLabel(model) : id);
+      if (model) catalogued.push({ value: id, label: modelDisplayLabel(model) });
+      else manual.push({ value: id, label: id });
     }
-    return list;
+    const list: MultiSelectorOptionType[] = [...catalogued];
+    if (manual.length > 0) {
+      list.push({ type: 'section', title: copy.manualModelSection, options: manual });
+    }
+    return { options: list, count: catalogued.length + manual.length };
   })();
 
   return (
@@ -54,8 +69,8 @@ export function EnabledModelManager(props: {
       options={options}
       value={props.enabledModelIds}
       onChange={props.onChange}
-      isDisabled={props.disabled || options.length === 0}
-      disabledMessage={options.length === 0 ? copy.noModels : undefined}
+      isDisabled={props.disabled || count === 0}
+      disabledMessage={count === 0 ? copy.noModels : undefined}
       placeholder={copy.noModels}
       // Names, not "N selected": Astryx hard-codes the English word into the
       // count display, and the labels answer "which ones" in the same width.

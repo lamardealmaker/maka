@@ -33,6 +33,7 @@ import { SettingsExpandableRow } from './settings-expandable-row';
 import { getProviderSettingsCopy } from '../locales/settings-provider-copy';
 import { providerDisplay } from './provider-display';
 import { EnabledModelManager } from './provider-enabled-model-manager';
+import { AddModelDialog, type ManualModelDraft } from './provider-add-model-dialog';
 import { useActionGuard } from './use-action-guard';
 import { useRuntimeHostSettingsTarget } from './runtime-host-settings-target.js';
 import { useOAuthLoginFlow } from './use-oauth-login-flow';
@@ -147,6 +148,7 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
     savedBaseUrl,
     save,
     updateEnabledModels,
+    addManualModel,
     relayProfileDraft,
     hasRelayProfileChanges,
     setDraftThinkingLevels,
@@ -163,6 +165,7 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
   // relay's backing model is unknown until the user says what it can do. The
   // declaration is per model — a relay can front both a reasoner and a plain
   // instruct model.
+  const [addModelOpen, setAddModelOpen] = useState(false);
   const showsCapabilities = connection.providerType === 'openai-compatible';
   // Rows are the enabled models, exactly — the store prunes a model's profile
   // the moment it is disabled, so no declaration can ever belong to a row
@@ -419,82 +422,18 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
           still needs one. Two rules with a gap between them read as an empty
           row, so only ever one. */}
       {!supportsApiKey && !showsEndpoint && <Divider />}
-      <DetailSection title={copy.advancedRequest} description={copy.advancedRequestHelp}>
-        <VStack gap={0}>
-              <SettingsExpandableRow
-                label={copy.requestHeaders}
-                value={savedHeaderNames.length > 0
-                  ? copy.configuredHeaders(savedHeaderNames.length)
-                  : copy.noAdvancedRequest}
-                actionLabel={copy.edit}
-                actionAriaLabel={`${copy.edit}: ${copy.requestHeaders}`}
-                isEditing={editingRow === 'headers'}
-                isDisabled={allActionsBusy}
-                canSave={hasHeaderDraftChanges}
-                saveLabel={copy.save}
-                cancelLabel={copy.cancel}
-                onEdit={() => openRow('headers')}
-                onCancel={() => {
-                  setHeaderDrafts(savedRequestHeaderDrafts(savedHeaderNames));
-                  setEditingRow(null);
-                }}
-                onSave={async () => {
-                  if (await saveRequestHeaders()) setEditingRow(null);
-                }}
-              >
-                <RequestHeadersEditor
-                  headers={headerDrafts}
-                  onHeadersChange={setHeaderDrafts}
-                  disabled={allActionsBusy}
-                  hideTitle
-                  copy={{
-                    headers: copy.requestHeaders,
-                    headerName: copy.headerName,
-                    headerValue: copy.headerValue,
-                    retainedValue: copy.retainedHeaderValue,
-                    addHeader: copy.addHeader,
-                    removeHeader: copy.removeHeader,
-                    noHeaders: copy.noRequestHeaders,
-                  }}
-                />
-              </SettingsExpandableRow>
-              <Divider />
-              <SettingsExpandableRow
-                label={copy.extraRequestBody}
-                value={connection.requestBodyOverlay ? copy.keySet : copy.noAdvancedRequest}
-                actionLabel={copy.edit}
-                actionAriaLabel={`${copy.edit}: ${copy.extraRequestBody}`}
-                isEditing={editingRow === 'body'}
-                isDisabled={allActionsBusy}
-                canSave={bodyDraft !== savedBodyText}
-                saveLabel={copy.save}
-                cancelLabel={copy.cancel}
-                onEdit={() => openRow('body')}
-                onCancel={() => {
-                  setBodyDraft(savedBodyText);
-                  setEditingRow(null);
-                }}
-                onSave={async () => {
-                  if (await saveRequestBody()) setEditingRow(null);
-                }}
-              >
-                <RequestBodyEditor
-                  bodyText={bodyDraft}
-                  onBodyTextChange={setBodyDraft}
-                  disabled={allActionsBusy}
-                  hideLabel
-                  copy={{ body: copy.extraRequestBody, bodyHelp: copy.extraRequestBodyHelp }}
-                />
-              </SettingsExpandableRow>
-              <Divider />
-        </VStack>
-      </DetailSection>
       <DetailSection title={copy.modelManagement} description={copy.modelManagementHelp}>
         <EnabledModelManager
           modelChoices={modelChoices}
           enabledModelIds={enabledModelIds}
           disabled={allActionsBusy}
           onChange={(next) => void updateEnabledModels(next)}
+        />
+        <AddModelDialog
+          isOpen={addModelOpen}
+          existingModelIds={enabledModelIds}
+          onOpenChange={setAddModelOpen}
+          onSubmit={(draft: ManualModelDraft) => void addManualModel(draft)}
         />
         {/* Each button reports its own work through clickAction (spinner +
             aria-busy + "Loading" announcement) instead of renaming itself to
@@ -507,6 +446,10 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
           {supportsRemoteDiscovery && (
             <Button variant="ghost" isDisabled={allActionsBusy || !hasUsableCredential} clickAction={() => refreshModels()} label={copy.updateModels} />
           )}
+          {/* Adding sits with the other two, not on its own line under the
+              selector: all three act on this section, and stacking them read
+              as two unrelated button rows. */}
+          <Button variant="ghost" isDisabled={allActionsBusy} onClick={() => setAddModelOpen(true)} label={copy.addModel} />
         </HStack>
       </DetailSection>
       {showsCapabilities && (
@@ -638,6 +581,76 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
         </>
       )}
       <Divider />
+      <DetailSection title={copy.advancedRequest} description={copy.advancedRequestHelp}>
+        <VStack gap={0}>
+              <SettingsExpandableRow
+                label={copy.requestHeaders}
+                value={savedHeaderNames.length > 0
+                  ? copy.configuredHeaders(savedHeaderNames.length)
+                  : copy.noAdvancedRequest}
+                actionLabel={copy.edit}
+                actionAriaLabel={`${copy.edit}: ${copy.requestHeaders}`}
+                isEditing={editingRow === 'headers'}
+                isDisabled={allActionsBusy}
+                canSave={hasHeaderDraftChanges}
+                saveLabel={copy.save}
+                cancelLabel={copy.cancel}
+                onEdit={() => openRow('headers')}
+                onCancel={() => {
+                  setHeaderDrafts(savedRequestHeaderDrafts(savedHeaderNames));
+                  setEditingRow(null);
+                }}
+                onSave={async () => {
+                  if (await saveRequestHeaders()) setEditingRow(null);
+                }}
+              >
+                <RequestHeadersEditor
+                  headers={headerDrafts}
+                  onHeadersChange={setHeaderDrafts}
+                  disabled={allActionsBusy}
+                  hideTitle
+                  copy={{
+                    headers: copy.requestHeaders,
+                    headerName: copy.headerName,
+                    headerValue: copy.headerValue,
+                    retainedValue: copy.retainedHeaderValue,
+                    addHeader: copy.addHeader,
+                    removeHeader: copy.removeHeader,
+                    noHeaders: copy.noRequestHeaders,
+                  }}
+                />
+              </SettingsExpandableRow>
+              <Divider />
+              <SettingsExpandableRow
+                label={copy.extraRequestBody}
+                value={connection.requestBodyOverlay ? copy.keySet : copy.noAdvancedRequest}
+                actionLabel={copy.edit}
+                actionAriaLabel={`${copy.edit}: ${copy.extraRequestBody}`}
+                isEditing={editingRow === 'body'}
+                isDisabled={allActionsBusy}
+                canSave={bodyDraft !== savedBodyText}
+                saveLabel={copy.save}
+                cancelLabel={copy.cancel}
+                onEdit={() => openRow('body')}
+                onCancel={() => {
+                  setBodyDraft(savedBodyText);
+                  setEditingRow(null);
+                }}
+                onSave={async () => {
+                  if (await saveRequestBody()) setEditingRow(null);
+                }}
+              >
+                <RequestBodyEditor
+                  bodyText={bodyDraft}
+                  onBodyTextChange={setBodyDraft}
+                  disabled={allActionsBusy}
+                  hideLabel
+                  copy={{ body: copy.extraRequestBody, bodyHelp: copy.extraRequestBodyHelp }}
+                />
+              </SettingsExpandableRow>
+              <Divider />
+        </VStack>
+      </DetailSection>
       {/* Deletion is last, and the only thing beside it is its own warning —
           no quiet action next to the destructive one for a mis-aimed cursor. */}
       <DetailSection title={copy.dangerZone} description={copy.deleteRowHelp}>

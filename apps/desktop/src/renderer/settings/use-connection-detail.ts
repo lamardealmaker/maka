@@ -7,6 +7,7 @@ import {
 } from '@maka/core/llm-connections';
 import { PROVIDER_DEFAULTS, connectionEnabledModelIds } from '@maka/core/llm-connections';
 import { buildConnectionModelCatalogEntries } from '@maka/core/model-catalog';
+import type { ManualModelDraft } from './provider-add-model-dialog';
 import {
   normalizeRelayModelProfiles,
   pruneRelayModelProfiles,
@@ -336,6 +337,26 @@ export function useConnectionDetail(props: ConnectionDetailProps) {
     }
   }
 
+  /**
+   * A model the user declared by hand, for a provider whose inference key has
+   * no callable model-list endpoint. The exact ID enters `enabledModelIds` —
+   * the same user-selection authority a catalogued model uses, so nothing here
+   * pretends the provider advertised it.
+   *
+   * The draft's runtime facts (context window, max output, tool calling,
+   * vision) are NOT persisted yet: `relayModelProfiles` is the natural home for
+   * them, but it is gated to `openai-compatible` in three places at once — the
+   * read seam (model-thinking.ts), the store invariant, and this page's
+   * capability section. Widening it is a decision about what that table is,
+   * not a patch, and it is tracked separately. Until then a manual model runs
+   * on the unknown-window fallback.
+   */
+  async function addManualModel(draft: ManualModelDraft) {
+    const id = draft.id.trim();
+    if (!id || enabledModelIds.includes(id)) return;
+    await updateEnabledModels([...enabledModelIds, id]);
+  }
+
   // Per-model profile declarations for openai-compatible relays, edited as a
   // LOCAL DRAFT and committed by an explicit 保存 button — never keystroke by
   // keystroke. A draft is `Record<modelId, RelayModelProfile>` seeded from the
@@ -635,6 +656,7 @@ export function useConnectionDetail(props: ConnectionDetailProps) {
     lastTestAtMs,
     save,
     updateEnabledModels,
+    addManualModel,
     relayProfileDraft: relayProfileDrafts,
     relayProfilesDirty,
     hasRelayProfileChanges,

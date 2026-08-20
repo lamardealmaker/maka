@@ -28,7 +28,7 @@ const meta = {
 export default meta;
 
 type Story = StoryObj<typeof meta>;
-type AutoOpenTarget = 'detail' | 'add' | 'catalog' | 'oauth' | 'xai-device';
+type AutoOpenTarget = 'detail' | 'detail-static' | 'add' | 'catalog' | 'oauth' | 'xai-device';
 
 function makeConnection(input: {
   slug: string;
@@ -41,6 +41,7 @@ function makeConnection(input: {
   lastTestMessage?: string;
   models?: LlmConnection['models'];
   modelSource?: LlmConnection['modelSource'];
+  enabledModelIds?: string[];
 }): LlmConnection {
   return {
     slug: input.slug,
@@ -49,6 +50,7 @@ function makeConnection(input: {
     ...(input.baseUrl ? { baseUrl: input.baseUrl } : {}),
     defaultModel: input.defaultModel ?? 'glm-4.7',
     enabled: input.enabled ?? true,
+    ...(input.enabledModelIds ? { enabledModelIds: input.enabledModelIds } : {}),
     ...(input.models ? { models: input.models } : {}),
     ...(input.modelSource ? { modelSource: input.modelSource } : {}),
     modelsFetchedAt: NOW - 18 * 60 * 1000,
@@ -96,6 +98,20 @@ const configuredConnections = [
     name: 'Ollama Local',
     providerType: 'ollama',
     defaultModel: 'qwen2.5-coder',
+    lastTestStatus: 'verified',
+  }),
+];
+
+// 火山方舟 Agent Plan has no model-list endpoint for its inference key
+// (/api/plan/v3/models and /api/plan/v1/models both 404 past the gateway), so
+// its catalog is the checked-in snapshot and never a fetched one.
+const staticCatalogConnections = [
+  makeConnection({
+    slug: 'ark-agent-plan',
+    name: 'Ark Agent Plan',
+    providerType: 'volcengine-agent-plan',
+    defaultModel: 'doubao-seed-2.1-turbo',
+    enabledModelIds: ['doubao-seed-2.1-turbo', 'kimi-k2.7-code'],
     lastTestStatus: 'verified',
   }),
 ];
@@ -364,10 +380,11 @@ function reachCatalog(root: HTMLElement): HTMLElement | null {
 }
 
 function clickAutoOpenTarget(root: HTMLElement, target: AutoOpenTarget): boolean {
-  if (target === 'detail') {
+  if (target === 'detail' || target === 'detail-static') {
     // ListItem's clickable surface is an invisible button inside the row, so
     // the row is located by its slug hook and the button taken from within it.
-    const row = root.querySelector<HTMLElement>('[data-connection-slug="zai-live"]');
+    const slug = target === 'detail' ? 'zai-live' : 'ark-agent-plan';
+    const row = root.querySelector<HTMLElement>(`[data-connection-slug="${slug}"]`);
     const detailButton = row?.querySelector('button') ?? null;
     detailButton?.click();
     return Boolean(detailButton);
@@ -428,6 +445,19 @@ export const ConnectionDetailPage: Story = {
     <ProviderStory
       bridge={createBridge({ connections: configuredConnections, defaultSlug: 'zai-live' })}
       autoOpen="detail"
+    />
+  ),
+};
+
+// Real path: 设置 → 模型 → click a connection whose provider has no callable
+// model-list endpoint (火山方舟 Agent Plan) — the same detail page, minus
+// 更新模型目录, where the only way to reach a newly released model is to type
+// its exact ID.
+export const StaticCatalogConnectionDetail: Story = {
+  render: () => (
+    <ProviderStory
+      bridge={createBridge({ connections: staticCatalogConnections, defaultSlug: 'ark-agent-plan' })}
+      autoOpen="detail-static"
     />
   ),
 };
